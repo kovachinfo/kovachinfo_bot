@@ -1,0 +1,384 @@
+{
+  "name": "Kovach Bot - Hot News Pipeline Skeleton",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "Generate pipeline:\\n1) collect sources\\n2) create draft digest\\n3) store in hot_news_digests as pending_approval\\n4) notify reviewer with approve/reject callback.",
+        "height": 200,
+        "width": 520
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -760,
+        -360
+      ],
+      "id": "f8c9d223-c67f-4f16-8219-ca35740e5d47",
+      "name": "Sticky Note - Generate Draft"
+    },
+    {
+      "parameters": {
+        "content": "Moderation pipeline:\\nTelegram callback approve/reject -> update DB status -> publish approved digest.",
+        "height": 160,
+        "width": 460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        260,
+        -360
+      ],
+      "id": "484450fd-8aa4-4c31-996c-f805d5ab06d7",
+      "name": "Sticky Note - Moderation"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        60
+      ],
+      "id": "f1df7f79-e238-475a-a905-690180407832",
+      "name": "Manual Trigger - Generate Digest Draft"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "dfbc3f40-83d5-4e03-aa7f-f8f9512b602c",
+              "name": "lang",
+              "value": "={{ 'ru' }}",
+              "type": "string"
+            },
+            {
+              "id": "af1d7a5b-f290-4fba-ba78-b416fd0faa17",
+              "name": "title",
+              "value": "={{ 'AI & Digital Marketing Hot News - Draft' }}",
+              "type": "string"
+            },
+            {
+              "id": "de61fcb9-1ac4-4ecb-a756-cff303f68228",
+              "name": "digest_text",
+              "value": "={{ 'Replace with generated digest text from your source collection and AI summarization workflow.' }}",
+              "type": "string"
+            },
+            {
+              "id": "d64eaa2e-0f3e-4d97-a31c-3094306e3fe2",
+              "name": "source_links_json",
+              "value": "={{ JSON.stringify([{source:'replace_with_real_source', url:'https://example.com'}]) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -460,
+        60
+      ],
+      "id": "1d6db9b1-8e94-4f9f-8398-c41116afd2a3",
+      "name": "Set - Draft Payload Skeleton"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO hot_news_digests (\n  lang,\n  title,\n  digest_text,\n  source_links_json,\n  status,\n  created_by_workflow,\n  created_at\n)\nVALUES (\n  '{{ String($json.lang || \"ru\").replace(/'/g, \"''\") }}',\n  '{{ String($json.title || \"\").replace(/'/g, \"''\") }}',\n  '{{ String($json.digest_text || \"\").replace(/'/g, \"''\") }}',\n  '{{ String($json.source_links_json || \"[]\").replace(/'/g, \"''\") }}'::jsonb,\n  'pending_approval',\n  'hot_news_pipeline_skeleton',\n  NOW()\n)\nRETURNING id, lang, title, status;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -180,
+        60
+      ],
+      "id": "21ac2f38-8b12-46e1-bac7-a372ecf89a70",
+      "name": "Postgres - Insert Pending Digest Draft"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ 'REVIEWER_CHAT_ID' }}",
+        "text": "=Черновик новостного дайджеста готов к проверке.\\n\\nID дайджеста: {{ $json.id }}\\nЗаголовок: {{ $json.title }}\\n\\nДействия модерации:\\n- hotnews_approve_{{ $json.id }}\\n- hotnews_reject_{{ $json.id }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        100,
+        60
+      ],
+      "id": "4db4fbc9-fb52-42f4-8c78-b355ac9f25f3",
+      "name": "Telegram - Notify Reviewer With Draft"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        300,
+        60
+      ],
+      "id": "55f8ea71-030e-4887-9152-5f159ec46734",
+      "name": "Telegram Trigger - Moderation Callback"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5ce82fbb-7efb-4283-8965-b634590a9108",
+              "name": "callback_data",
+              "value": "={{ String($json.callback_query?.data || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "66a84b50-df0b-484a-9e0d-8e4ce763f4de",
+              "name": "reviewer_id",
+              "value": "={{ String($json.callback_query?.from?.id || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "77c1f4f5-e46e-4d6c-bebc-b19ad07d7cf7",
+              "name": "digest_id",
+              "value": "={{ (() => { const d = String($json.callback_query?.data || ''); const m = d.match(/_(\\d+)$/); return m ? m[1] : ''; })() }}",
+              "type": "string"
+            },
+            {
+              "id": "2045c1d3-cd3c-4d99-b77d-f0f729a0ccf4",
+              "name": "decision",
+              "value": "={{ String($json.callback_query?.data || '').startsWith('hotnews_approve_') ? 'approve' : (String($json.callback_query?.data || '').startsWith('hotnews_reject_') ? 'reject' : 'unknown') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        560,
+        60
+      ],
+      "id": "82b052a4-c6b8-4958-8ab6-b9bfd07df98e",
+      "name": "Set - Parse Moderation Callback"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "09708bb2-56e7-4168-ba4d-d2f6cb8fc663",
+              "leftValue": "={{ $json.decision === 'approve' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        820,
+        60
+      ],
+      "id": "4466c432-c286-4f95-bfb4-fccf6b8ef15d",
+      "name": "If - Decision Approve"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE hot_news_digests\nSET status = 'published',\n    approved_by = {{ $json.reviewer_id }}::bigint,\n    approved_at = NOW(),\n    published_at = NOW()\nWHERE id = {{ $json.digest_id }}::bigint\nRETURNING id, lang, title, digest_text, status;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1080,
+        -40
+      ],
+      "id": "fd01f0f5-8654-4f5d-a6c4-5e0982ad10d8",
+      "name": "Postgres - Mark Digest Published"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ 'TARGET_CHANNEL_OR_CHAT_ID' }}",
+        "text": "=Готово к публикации:\\n\\n{{ $json.title }}\\n\\n{{ $json.digest_text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1340,
+        -40
+      ],
+      "id": "19f88f58-9d51-45e7-84e5-8d6f227f11b8",
+      "name": "Telegram - Publish Digest Message"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE hot_news_digests\nSET status = 'rejected',\n    approved_by = {{ $json.reviewer_id }}::bigint,\n    approved_at = NOW()\nWHERE id = {{ $json.digest_id }}::bigint\nRETURNING id, status;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1080,
+        180
+      ],
+      "id": "309f89f0-e8fe-4f87-a235-f6cfd4ac4954",
+      "name": "Postgres - Mark Digest Rejected"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ String($json.callback_query?.message?.chat?.id || 'REVIEWER_CHAT_ID') }}",
+        "text": "=Результат модерации сохранен в базе.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1340,
+        180
+      ],
+      "id": "8d5b2f95-7601-429a-a775-f30dc8ef2aef",
+      "name": "Telegram - Confirm Moderation Result"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger - Generate Digest Draft": {
+      "main": [
+        [
+          {
+            "node": "Set - Draft Payload Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Draft Payload Skeleton": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Insert Pending Digest Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Insert Pending Digest Draft": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Notify Reviewer With Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger - Moderation Callback": {
+      "main": [
+        [
+          {
+            "node": "Set - Parse Moderation Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Parse Moderation Callback": {
+      "main": [
+        [
+          {
+            "node": "If - Decision Approve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Decision Approve": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Mark Digest Published",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Postgres - Mark Digest Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Mark Digest Published": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Publish Digest Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Mark Digest Rejected": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Confirm Moderation Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "46f35de8-af1d-48f6-b944-a88f6d744b95",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "kovach-hot-news-pipeline-skeleton",
+  "tags": []
+}

@@ -1,0 +1,8 @@
+.codex
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*.validated.json
+/tmp/

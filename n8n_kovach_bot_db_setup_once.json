@@ -1,0 +1,70 @@
+{
+  "name": "Kovach Bot DB Setup (Run Once)",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -360,
+        160
+      ],
+      "id": "a28ed0fe-ae6f-4495-b233-6286746c8589",
+      "name": "Manual Trigger - Run DB Setup Once"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- KOVACH BOT - PostgreSQL schema and seed data\n-- Target credential in n8n: kovach_bot_db\n-- Safe to run multiple times (idempotent DDL/seed pattern).\n\nBEGIN;\n\nCREATE TABLE IF NOT EXISTS bot_users (\n  user_id            BIGINT PRIMARY KEY,\n  chat_id            BIGINT NOT NULL,\n  username           TEXT,\n  first_name         TEXT,\n  last_name          TEXT,\n  language           TEXT NOT NULL DEFAULT 'ru' CHECK (language IN ('ru', 'en', 'sr')),\n  language_detected  TEXT,\n  state              TEXT NOT NULL DEFAULT 'main_menu',\n  prev_state         TEXT,\n  funnel_stage       TEXT NOT NULL DEFAULT 'visitor',\n  entry_point        TEXT,\n  utm_source         TEXT,\n  utm_campaign       TEXT,\n  last_intent        TEXT,\n  last_seen_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\nCREATE INDEX IF NOT EXISTS idx_bot_users_chat_id ON bot_users (chat_id);\nCREATE INDEX IF NOT EXISTS idx_bot_users_state ON bot_users (state);\nCREATE INDEX IF NOT EXISTS idx_bot_users_language ON bot_users (language);\n\nCREATE TABLE IF NOT EXISTS bot_events (\n  id                 BIGSERIAL PRIMARY KEY,\n  user_id            BIGINT,\n  chat_id            BIGINT,\n  event_type         TEXT NOT NULL,\n  input_type         TEXT,\n  intent             TEXT,\n  state_before       TEXT,\n  state_after        TEXT,\n  payload_json       JSONB,\n  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\nCREATE INDEX IF NOT EXISTS idx_bot_events_user_id ON bot_events (user_id);\nCREATE INDEX IF NOT EXISTS idx_bot_events_chat_id ON bot_events (chat_id);\nCREATE INDEX IF NOT EXISTS idx_bot_events_created_at ON bot_events (created_at DESC);\nCREATE INDEX IF NOT EXISTS idx_bot_events_intent ON bot_events (intent);\n\nCREATE TABLE IF NOT EXISTS lead_requests (\n  id                 BIGSERIAL PRIMARY KEY,\n  user_id            BIGINT NOT NULL,\n  lead_type          TEXT NOT NULL,\n  lead_status        TEXT NOT NULL DEFAULT 'new',\n  service_interest   TEXT,\n  problem_text       TEXT,\n  contact_preference TEXT,\n  source_context     TEXT,\n  manager_notes      TEXT,\n  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\nCREATE INDEX IF NOT EXISTS idx_lead_requests_user_id ON lead_requests (user_id);\nCREATE INDEX IF NOT EXISTS idx_lead_requests_status ON lead_requests (lead_status);\nCREATE INDEX IF NOT EXISTS idx_lead_requests_created_at ON lead_requests (created_at DESC);\n\nCREATE TABLE IF NOT EXISTS chat_sessions (\n  id                 BIGSERIAL PRIMARY KEY,\n  user_id            BIGINT NOT NULL,\n  message_thread_id  BIGINT NOT NULL,\n  status             TEXT NOT NULL CHECK (status IN ('open', 'closed')),\n  manager_id         BIGINT,\n  handoff_reason     TEXT,\n  opened_at          TIMESTAMPTZ,\n  closed_at          TIMESTAMPTZ,\n  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\nCREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions (user_id);\nCREATE INDEX IF NOT EXISTS idx_chat_sessions_status ON chat_sessions (status);\nCREATE INDEX IF NOT EXISTS idx_chat_sessions_thread_id ON chat_sessions (message_thread_id);\n\nCREATE TABLE IF NOT EXISTS hot_news_digests (\n  id                   BIGSERIAL PRIMARY KEY,\n  lang                 TEXT NOT NULL CHECK (lang IN ('ru', 'en', 'sr')),\n  title                TEXT NOT NULL,\n  digest_text          TEXT NOT NULL,\n  source_links_json    JSONB,\n  status               TEXT NOT NULL DEFAULT 'draft'\n                        CHECK (status IN ('draft', 'pending_approval', 'approved', 'rejected', 'published')),\n  created_by_workflow  TEXT,\n  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  approved_by          BIGINT,\n  approved_at          TIMESTAMPTZ,\n  published_at         TIMESTAMPTZ,\n  published_message_id BIGINT\n);\n\nCREATE INDEX IF NOT EXISTS idx_hot_news_digests_status ON hot_news_digests (status);\nCREATE INDEX IF NOT EXISTS idx_hot_news_digests_lang_status_created\n  ON hot_news_digests (lang, status, created_at DESC);\n\nCREATE TABLE IF NOT EXISTS bot_content_items (\n  id                 BIGSERIAL PRIMARY KEY,\n  module_key         TEXT NOT NULL,\n  item_key           TEXT NOT NULL,\n  lang               TEXT NOT NULL CHECK (lang IN ('ru', 'en', 'sr')),\n  title              TEXT,\n  body               TEXT,\n  media_type         TEXT,\n  media_file_id      TEXT,\n  sort_order         INT NOT NULL DEFAULT 100,\n  is_active          BOOLEAN NOT NULL DEFAULT TRUE,\n  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  CONSTRAINT uq_bot_content_items UNIQUE (module_key, item_key, lang)\n);\n\nCREATE INDEX IF NOT EXISTS idx_bot_content_items_module\n  ON bot_content_items (module_key, lang, is_active, sort_order);\n\nCREATE TABLE IF NOT EXISTS menu_command_map (\n  id           BIGSERIAL PRIMARY KEY,\n  lang         TEXT NOT NULL CHECK (lang IN ('ru', 'en', 'sr', '*')),\n  input_value  TEXT NOT NULL,\n  input_type   TEXT NOT NULL CHECK (input_type IN ('text', 'callback', 'command')),\n  intent_key   TEXT NOT NULL,\n  target_state TEXT,\n  is_active    BOOLEAN NOT NULL DEFAULT TRUE,\n  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n  CONSTRAINT uq_menu_command_map UNIQUE (lang, input_value, input_type)\n);\n\nCREATE INDEX IF NOT EXISTS idx_menu_command_map_lookup\n  ON menu_command_map (lang, input_type, lower(input_value), is_active);\nCREATE INDEX IF NOT EXISTS idx_menu_command_map_intent ON menu_command_map (intent_key);\n\nCREATE TABLE IF NOT EXISTS tg_usage (\n  chat_id      BIGINT PRIMARY KEY,\n  msg_count    INT NOT NULL DEFAULT 0,\n  last_msg_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\n-- Seed: callback and command map (language-agnostic)\nINSERT INTO menu_command_map (lang, input_value, input_type, intent_key, target_state, is_active)\nVALUES\n  ('*', '/start', 'command', 'start', 'main_menu', TRUE),\n  ('*', '/menu', 'command', 'main_menu', 'main_menu', TRUE),\n  ('*', '/reset_memory', 'command', 'reset_memory', NULL, TRUE),\n\n  ('*', 'main_menu', 'callback', 'main_menu', 'main_menu', TRUE),\n  ('*', 'back', 'callback', 'back', NULL, TRUE),\n  ('*', 'menu_usecases', 'callback', 'menu_usecases', 'usecases_menu', TRUE),\n  ('*', 'menu_hot_news', 'callback', 'menu_hot_news', 'hot_news_menu', TRUE),\n  ('*', 'menu_contacts', 'callback', 'menu_contacts', 'contacts_menu', TRUE),\n  ('*', 'menu_creative', 'callback', 'menu_creative', 'creative_chat', TRUE),\n  ('*', 'change_language', 'callback', 'change_language', 'language_settings', TRUE),\n  ('*', 'set_lang_ru', 'callback', 'set_lang_ru', 'main_menu', TRUE),\n  ('*', 'set_lang_en', 'callback', 'set_lang_en', 'main_menu', TRUE),\n  ('*', 'set_lang_sr', 'callback', 'set_lang_sr', 'main_menu', TRUE),\n  ('*', 'case_1', 'callback', 'case_1', 'usecases_case_1', TRUE),\n  ('*', 'case_2', 'callback', 'case_2', 'usecases_case_2', TRUE),\n  ('*', 'case_3', 'callback', 'case_3', 'usecases_case_3', TRUE),\n  ('*', 'case_4', 'callback', 'case_4', 'usecases_case_4', TRUE),\n  ('*', 'reset_memory', 'callback', 'reset_memory', NULL, TRUE)\nON CONFLICT (lang, input_value, input_type) DO NOTHING;\n\n-- Seed: RU text labels with emoji\nINSERT INTO menu_command_map (lang, input_value, input_type, intent_key, target_state, is_active)\nVALUES\n  ('ru', '📚 Юзкейсы', 'text', 'menu_usecases', 'usecases_menu', TRUE),\n  ('ru', '🔥 Hot News', 'text', 'menu_hot_news', 'hot_news_menu', TRUE),\n  ('ru', '📞 Контакты', 'text', 'menu_contacts', 'contacts_menu', TRUE),\n  ('ru', '🎨 Креатив', 'text', 'menu_creative', 'creative_chat', TRUE),\n  ('ru', '🌐 Сменить язык', 'text', 'change_language', 'language_settings', TRUE),\n\n  ('ru', '🧩 Кейс №1', 'text', 'case_1', 'usecases_case_1', TRUE),\n  ('ru', '🧩 Кейс №2', 'text', 'case_2', 'usecases_case_2', TRUE),\n  ('ru', '🧩 Кейс №3', 'text', 'case_3', 'usecases_case_3', TRUE),\n  ('ru', '🧩 Кейс №4', 'text', 'case_4', 'usecases_case_4', TRUE),\n\n  ('ru', '⬅️ Назад', 'text', 'back', NULL, TRUE),\n  ('ru', '🏠 Главное меню', 'text', 'main_menu', 'main_menu', TRUE),\n  ('ru', '🧹 Сбросить память', 'text', 'reset_memory', NULL, TRUE),\n\n  ('ru', '🇷🇺 Русский', 'text', 'set_lang_ru', 'main_menu', TRUE),\n  ('ru', '🇬🇧 English', 'text', 'set_lang_en', 'main_menu', TRUE),\n  ('ru', '🇷🇸 Srpski', 'text', 'set_lang_sr', 'main_menu', TRUE)\nON CONFLICT (lang, input_value, input_type) DO NOTHING;\n\n-- Seed: EN text labels with emoji\nINSERT INTO menu_command_map (lang, input_value, input_type, intent_key, target_state, is_active)\nVALUES\n  ('en', '📚 Use Cases', 'text', 'menu_usecases', 'usecases_menu', TRUE),\n  ('en', '🔥 Hot News', 'text', 'menu_hot_news', 'hot_news_menu', TRUE),\n  ('en', '📞 Contacts', 'text', 'menu_contacts', 'contacts_menu', TRUE),\n  ('en', '🎨 Creative', 'text', 'menu_creative', 'creative_chat', TRUE),\n  ('en', '🌐 Change Language', 'text', 'change_language', 'language_settings', TRUE),\n\n  ('en', '🧩 Case #1', 'text', 'case_1', 'usecases_case_1', TRUE),\n  ('en', '🧩 Case #2', 'text', 'case_2', 'usecases_case_2', TRUE),\n  ('en', '🧩 Case #3', 'text', 'case_3', 'usecases_case_3', TRUE),\n  ('en', '🧩 Case #4', 'text', 'case_4', 'usecases_case_4', TRUE),\n\n  ('en', '⬅️ Back', 'text', 'back', NULL, TRUE),\n  ('en', '🏠 Main Menu', 'text', 'main_menu', 'main_menu', TRUE),\n  ('en', '🧹 Reset Memory', 'text', 'reset_memory', NULL, TRUE),\n\n  ('en', '🇷🇺 Russian', 'text', 'set_lang_ru', 'main_menu', TRUE),\n  ('en', '🇬🇧 English', 'text', 'set_lang_en', 'main_menu', TRUE),\n  ('en', '🇷🇸 Serbian', 'text', 'set_lang_sr', 'main_menu', TRUE)\nON CONFLICT (lang, input_value, input_type) DO NOTHING;\n\n-- Seed: SR text labels with emoji (Latin script)\nINSERT INTO menu_command_map (lang, input_value, input_type, intent_key, target_state, is_active)\nVALUES\n  ('sr', '📚 Studije slucaja', 'text', 'menu_usecases', 'usecases_menu', TRUE),\n  ('sr', '🔥 Hot News', 'text', 'menu_hot_news', 'hot_news_menu', TRUE),\n  ('sr', '📞 Kontakti', 'text', 'menu_contacts', 'contacts_menu', TRUE),\n  ('sr', '🎨 Kreativa', 'text', 'menu_creative', 'creative_chat', TRUE),\n  ('sr', '🌐 Promeni jezik', 'text', 'change_language', 'language_settings', TRUE),\n\n  ('sr', '🧩 Slucaj #1', 'text', 'case_1', 'usecases_case_1', TRUE),\n  ('sr', '🧩 Slucaj #2', 'text', 'case_2', 'usecases_case_2', TRUE),\n  ('sr', '🧩 Slucaj #3', 'text', 'case_3', 'usecases_case_3', TRUE),\n  ('sr', '🧩 Slucaj #4', 'text', 'case_4', 'usecases_case_4', TRUE),\n\n  ('sr', '⬅️ Nazad', 'text', 'back', NULL, TRUE),\n  ('sr', '🏠 Glavni meni', 'text', 'main_menu', 'main_menu', TRUE),\n  ('sr', '🧹 Resetuj memoriju', 'text', 'reset_memory', NULL, TRUE),\n\n  ('sr', '🇷🇺 Ruski', 'text', 'set_lang_ru', 'main_menu', TRUE),\n  ('sr', '🇬🇧 Engleski', 'text', 'set_lang_en', 'main_menu', TRUE),\n  ('sr', '🇷🇸 Srpski', 'text', 'set_lang_sr', 'main_menu', TRUE)\nON CONFLICT (lang, input_value, input_type) DO NOTHING;\n\nCOMMIT;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -80,
+        160
+      ],
+      "id": "53489ef6-3258-4e2e-bf02-cf084023afc6",
+      "name": "Postgres - Create Schema And Seed Command Map"
+    },
+    {
+      "parameters": {
+        "content": "Use PostgreSQL credential: kovach_bot_db.\nRun once after import.\nIf you update schema later, version it in SQL migrations.",
+        "height": 180,
+        "width": 420
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        -120
+      ],
+      "id": "f4dfb0f0-6682-4bf3-87a3-4ab91f16a92e",
+      "name": "Sticky Note - How To Run"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger - Run DB Setup Once": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Create Schema And Seed Command Map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f955dce0-02c8-48ac-bc8f-e34f641e9e95",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "kovach-bot-db-setup-once",
+  "tags": []
+}

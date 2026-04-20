@@ -1,0 +1,1795 @@
+{
+  "name": "Telegram Funnel Bot MVP Skeleton",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Import Checklist\n\n1. Assign Telegram credentials to all Telegram nodes.\n2. Assign PostgreSQL credentials to all Postgres nodes.\n3. Use PostgreSQL credential name: `kovach_bot_db`.\n4. Create tables: `bot_users`, `lead_requests`, `chat_sessions`, `bot_events`.\n5. Replace placeholder texts, menu copy, and callback keys.\n6. Extend the handoff branch with `createForumTopic` and real topic relay logic.",
+        "height": 280,
+        "width": 560
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1660,
+        -640
+      ],
+      "id": "b215ccf2-6732-4d58-b896-c5c2ddbd7e70",
+      "name": "Sticky Note - Credentials and Preconditions"
+    },
+    {
+      "parameters": {
+        "content": "## Core Flow\n\nInbound update -> normalization -> load user context -> create user if missing -> enrich routing context -> detect manager topic / active handoff / onboarding / menu intent.",
+        "height": 220,
+        "width": 720
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1560,
+        -120
+      ],
+      "id": "37ff7d7c-1d05-46f1-9ec5-b2f3185a5c9d",
+      "name": "Sticky Note - Core Inbound Flow"
+    },
+    {
+      "parameters": {
+        "content": "## MVP Branches\n\n- Welcome and main menu\n- Language switch RU / EN / SR\n- About me\n- Free audit request\n- Contact options\n- Human handoff request\n- Fallback to main menu\n\nThis file is a build skeleton, not the final production workflow.",
+        "height": 260,
+        "width": 620
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        740,
+        -640
+      ],
+      "id": "b0d1e190-28a3-432a-9237-cc03a9ad0f68",
+      "name": "Sticky Note - MVP Module Branches"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1480,
+        80
+      ],
+      "id": "a2ebf6b8-bf97-4632-bd5a-40b274dc6d86",
+      "name": "Telegram Trigger - Receive User Messages and Callback Queries",
+      "webhookId": "ee8252d1-f82d-4473-8990-9fd1d6fcaf25"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6cf4f4c4-315a-4c2a-86ca-56490ccdb07b",
+              "name": "event_id",
+              "value": "={{ $json.update_id ? String($json.update_id) : String(Date.now()) }}",
+              "type": "string"
+            },
+            {
+              "id": "b26ccdc5-dcb2-4bae-afaa-7f5484b6219a",
+              "name": "source",
+              "value": "={{ $json.callback_query ? 'telegram_callback' : ($json.message?.is_topic_message ? 'telegram_manager_topic' : ($json.message?.chat?.type === 'private' ? 'telegram_private' : 'telegram_group')) }}",
+              "type": "string"
+            },
+            {
+              "id": "ea1ef093-8d59-484d-8b0a-ee0b00bcd017",
+              "name": "chat_id",
+              "value": "={{ String($json.callback_query?.message?.chat?.id || $json.message?.chat?.id || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "2a75ad4e-ac4a-4062-9560-ec9c1281874d",
+              "name": "user_id",
+              "value": "={{ String($json.callback_query?.from?.id || $json.message?.from?.id || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "138e131d-bbe5-4c24-b894-5806dc9bf1e3",
+              "name": "message_id",
+              "value": "={{ String($json.callback_query?.message?.message_id || $json.message?.message_id || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "4ecfbe32-f5e5-4850-a89e-f62f0efe8c1d",
+              "name": "message_thread_id",
+              "value": "={{ String($json.message?.message_thread_id || $json.callback_query?.message?.message_thread_id || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "83d5930e-89d6-4cc0-aa4d-0cc9c38d0114",
+              "name": "input_type",
+              "value": "={{ $json.callback_query ? 'callback' : $json.message?.voice ? 'voice' : $json.message?.photo ? 'photo' : $json.message?.video ? 'video' : $json.message?.document ? 'document' : ($json.message?.text || $json.message?.caption) ? 'text' : 'unknown' }}",
+              "type": "string"
+            },
+            {
+              "id": "f56a8106-c035-4c3a-861d-17bd7b136d52",
+              "name": "raw_text",
+              "value": "={{ $json.callback_query?.data || $json.message?.text || $json.message?.caption || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "a7d53ec8-d9f1-422b-a588-343939e01d3d",
+              "name": "text_normalized",
+              "value": "={{ String($json.callback_query?.data || $json.message?.text || $json.message?.caption || '').trim().replace(/\\s+/g, ' ') }}",
+              "type": "string"
+            },
+            {
+              "id": "9f5180a0-bb41-423e-a077-48f099b126d4",
+              "name": "callback_data",
+              "value": "={{ String($json.callback_query?.data || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "1b7460be-521b-41a8-8905-6fcf8c1b3ec8",
+              "name": "username",
+              "value": "={{ String($json.callback_query?.from?.username || $json.message?.from?.username || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "1b0b767c-b662-4e4b-98a5-0be3d5116a85",
+              "name": "first_name",
+              "value": "={{ String($json.callback_query?.from?.first_name || $json.message?.from?.first_name || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "c76407a9-6209-4cde-8552-f7e3ce3ded1f",
+              "name": "last_name",
+              "value": "={{ String($json.callback_query?.from?.last_name || $json.message?.from?.last_name || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "592d95dd-e6b9-4628-b5d1-f95f1aa40d5b",
+              "name": "entry_point",
+              "value": "={{ $json.message?.text?.startsWith('/start ') ? String($json.message.text.split(' ').slice(1).join(' ')) : '' }}",
+              "type": "string"
+            },
+            {
+              "id": "e2f29208-8af1-4590-abfa-768b19d0d6f1",
+              "name": "received_at",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1180,
+        80
+      ],
+      "id": "ce68ecf0-6781-481e-a583-4a532cef4eb4",
+      "name": "Set - Normalize Telegram Update"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  {{ $json.user_id }}::bigint AS user_id,\n  {{ $json.chat_id }}::bigint AS chat_id,\n  u.language,\n  u.state,\n  u.funnel_stage,\n  u.entry_point,\n  (u.user_id IS NOT NULL) AS user_exists,\n  s.message_thread_id,\n  COALESCE(s.status, 'closed') AS handoff_status,\n  COALESCE((s.status = 'open'), false) AS handoff_open\nFROM (SELECT 1) seed\nLEFT JOIN bot_users u\n  ON u.user_id = {{ $json.user_id }}::bigint\nLEFT JOIN LATERAL (\n  SELECT message_thread_id, status\n  FROM chat_sessions\n  WHERE user_id = {{ $json.user_id }}::bigint\n    AND status = 'open'\n  ORDER BY created_at DESC\n  LIMIT 1\n) s ON true;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -860,
+        80
+      ],
+      "id": "eec81d77-540e-42b1-bc3b-af48dfd9a656",
+      "name": "Postgres - Load User Context and Active Session"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e9bb4501-3f6c-418c-9bde-2422ff7fe6db",
+              "leftValue": "={{ $json.user_exists }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -620,
+        80
+      ],
+      "id": "12070ad3-3a79-4ccc-94c3-e8708135d2f0",
+      "name": "If - User Exists in bot_users"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO bot_users (\n  user_id,\n  chat_id,\n  username,\n  first_name,\n  last_name,\n  language,\n  state,\n  funnel_stage,\n  entry_point,\n  last_seen_at,\n  created_at,\n  updated_at\n)\nVALUES (\n  {{ $('Set - Normalize Telegram Update').item.json.user_id }}::bigint,\n  {{ $('Set - Normalize Telegram Update').item.json.chat_id }}::bigint,\n  '{{ String($('Set - Normalize Telegram Update').item.json.username || '').replace(/'/g, \"''\") }}',\n  '{{ String($('Set - Normalize Telegram Update').item.json.first_name || '').replace(/'/g, \"''\") }}',\n  '{{ String($('Set - Normalize Telegram Update').item.json.last_name || '').replace(/'/g, \"''\") }}',\n  'ru',\n  'new',\n  'visitor',\n  '{{ String($('Set - Normalize Telegram Update').item.json.entry_point || '').replace(/'/g, \"''\") }}',\n  NOW(),\n  NOW(),\n  NOW()\n)\nON CONFLICT (user_id) DO NOTHING\nRETURNING user_id, chat_id, language, state, funnel_stage;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -340,
+        240
+      ],
+      "id": "e838ab06-8e22-4302-a77b-ae3084a20d1b",
+      "name": "Postgres - Insert New User With Default State"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f468c836-8e1a-48d2-8fd9-eeb9501afdca",
+              "name": "chat_id",
+              "value": "={{ $('Set - Normalize Telegram Update').item.json.chat_id }}",
+              "type": "string"
+            },
+            {
+              "id": "ad9802e7-a8d0-4779-846b-278ebd7fe913",
+              "name": "user_id",
+              "value": "={{ $('Set - Normalize Telegram Update').item.json.user_id }}",
+              "type": "string"
+            },
+            {
+              "id": "c7a75b6c-ee8b-4ff6-beb9-fdafacf95b01",
+              "name": "source",
+              "value": "={{ $('Set - Normalize Telegram Update').item.json.source }}",
+              "type": "string"
+            },
+            {
+              "id": "98d1e5fd-eccb-4395-a5cb-49ff6de1232a",
+              "name": "input_type",
+              "value": "={{ $('Set - Normalize Telegram Update').item.json.input_type }}",
+              "type": "string"
+            },
+            {
+              "id": "411cb6da-2aa1-460d-8af2-c034fbe79f30",
+              "name": "text_normalized",
+              "value": "={{ $('Set - Normalize Telegram Update').item.json.text_normalized }}",
+              "type": "string"
+            },
+            {
+              "id": "ffb473d9-d50b-4ee3-b5b4-06b4f0320c72",
+              "name": "callback_data",
+              "value": "={{ $('Set - Normalize Telegram Update').item.json.callback_data }}",
+              "type": "string"
+            },
+            {
+              "id": "e61f90d5-cbd7-4ed4-a64e-817c55d6bdaa",
+              "name": "message_thread_id",
+              "value": "={{ String($('Postgres - Load User Context and Active Session').item.json.message_thread_id || $('Set - Normalize Telegram Update').item.json.message_thread_id || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "2dbfd5b3-dbec-4d47-8d6d-39a43d3edabb",
+              "name": "language",
+              "value": "={{ String($('Postgres - Load User Context and Active Session').item.json.language || 'ru') }}",
+              "type": "string"
+            },
+            {
+              "id": "71573a59-9b76-4f97-98ef-07d659672d9c",
+              "name": "current_state",
+              "value": "={{ String($('Postgres - Load User Context and Active Session').item.json.state || 'new') }}",
+              "type": "string"
+            },
+            {
+              "id": "53bc5a40-c823-4fdf-8176-aa2d108ce964",
+              "name": "funnel_stage",
+              "value": "={{ String($('Postgres - Load User Context and Active Session').item.json.funnel_stage || 'visitor') }}",
+              "type": "string"
+            },
+            {
+              "id": "5663f326-b9b8-43ef-afc1-3f31c1ca19dc",
+              "name": "entry_point",
+              "value": "={{ String($('Set - Normalize Telegram Update').item.json.entry_point || $('Postgres - Load User Context and Active Session').item.json.entry_point || '') }}",
+              "type": "string"
+            },
+            {
+              "id": "629ef593-eb0c-4e91-b868-39ea6ee80735",
+              "name": "user_exists",
+              "value": "={{ $('Postgres - Load User Context and Active Session').item.json.user_exists }}",
+              "type": "boolean"
+            },
+            {
+              "id": "7c1f8303-c2cb-4611-bc2c-a3bd53f4130f",
+              "name": "is_new_user",
+              "value": "={{ !$('Postgres - Load User Context and Active Session').item.json.user_exists }}",
+              "type": "boolean"
+            },
+            {
+              "id": "49d1e1a6-156e-4c53-98ea-a66d09752da3",
+              "name": "handoff_open",
+              "value": "={{ $('Postgres - Load User Context and Active Session').item.json.handoff_open }}",
+              "type": "boolean"
+            },
+            {
+              "id": "227adf84-13bd-4e9e-86c1-2b4af1e2fa37",
+              "name": "handoff_status",
+              "value": "={{ String($('Postgres - Load User Context and Active Session').item.json.handoff_status || 'closed') }}",
+              "type": "string"
+            },
+            {
+              "id": "c3199f7a-dbdc-4783-a07d-7417f652e690",
+              "name": "intent_key",
+              "value": "={{ (() => { const raw = String($('Set - Normalize Telegram Update').item.json.callback_data || $('Set - Normalize Telegram Update').item.json.text_normalized || '').trim().toLowerCase(); if (!raw) return 'unknown'; if (raw === '/start' || raw === 'start') return 'start'; if (['main_menu','menu_main','главное меню','main menu','glavni meni'].includes(raw) || raw.includes('главное меню')) return 'main_menu'; if (['back','назад','back','nazad'].includes(raw)) return 'back'; if (['change_language','language','switch_language','сменить язык','язык','change language','language settings','promeni jezik','jezik'].includes(raw) || raw.includes('change language') || raw.includes('promeni jezik')) return 'change_language'; if (['set_lang_ru','lang_ru','русский','russian','ruski'].includes(raw)) return 'set_lang_ru'; if (['set_lang_en','lang_en','english','английский','engleski'].includes(raw)) return 'set_lang_en'; if (['set_lang_sr','lang_sr','serbian','serbian language','сербский','srpski'].includes(raw)) return 'set_lang_sr'; if (['menu_usecases','📚 юзкейсы','юзкейсы','use cases','studije slucaja'].includes(raw) || raw.includes('юзкейс') || raw.includes('use case') || raw.includes('studije')) return 'menu_usecases'; if (['case_1','кейс №1','case #1','slucaj #1'].includes(raw)) return 'case_1'; if (['case_2','кейс №2','case #2','slucaj #2'].includes(raw)) return 'case_2'; if (['case_3','кейс №3','case #3','slucaj #3'].includes(raw)) return 'case_3'; if (['case_4','кейс №4','case #4','slucaj #4'].includes(raw)) return 'case_4'; if (['menu_hot_news','hot news','🔥 hot news'].includes(raw)) return 'menu_hot_news'; if (['menu_contacts','контакты','contacts','kontakti','contact'].includes(raw) || raw.includes('контакт')) return 'menu_contacts'; if (['menu_creative','креатив','creative','kreativa'].includes(raw)) return 'menu_creative'; if (['reset_memory','сбросить память','reset memory','resetuj memoriju'].includes(raw)) return 'reset_memory'; if (raw === 'talk_to_manager' || raw.includes('менеджер') || raw.includes('связаться') || raw.includes('manager') || raw.includes('agent') || raw.includes('menadžer') || raw.includes('kontaktiraj')) return 'talk_to_manager'; return 'unknown'; })() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -40,
+        80
+      ],
+      "id": "733ef32f-9fbf-47cb-bb02-ac8ef7525e71",
+      "name": "Set - Enrich Context For Routing"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO bot_events (\n  user_id,\n  chat_id,\n  event_type,\n  input_type,\n  intent,\n  state_before,\n  state_after,\n  payload_json,\n  created_at\n)\nVALUES (\n  {{ $json.user_id }}::bigint,\n  {{ $json.chat_id }}::bigint,\n  'telegram_update',\n  '{{ String($json.input_type || '').replace(/'/g, \"''\") }}',\n  '{{ String($json.intent_key || '').replace(/'/g, \"''\") }}',\n  '{{ String($json.current_state || '').replace(/'/g, \"''\") }}',\n  '{{ String($json.current_state || '').replace(/'/g, \"''\") }}',\n  '{{ JSON.stringify($json).replace(/'/g, \"''\") }}'::jsonb,\n  NOW()\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        220,
+        -100
+      ],
+      "id": "5d77e932-edab-425a-8e16-abfaeb1ee14d",
+      "name": "Postgres - Log Incoming Event"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8bcfb0c2-b3d4-485f-ab20-e60f2d8d8b0b",
+              "leftValue": "={{ $json.source === 'telegram_manager_topic' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        220,
+        80
+      ],
+      "id": "5f5234a6-ccdd-4f77-a5e8-0d65753846ca",
+      "name": "If - Event Came From Manager Topic"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Manager topic event received. Replace this node with full relay logic from manager topic to private user chat by `message_thread_id` lookup.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        500,
+        -20
+      ],
+      "id": "9924ab91-2f55-4cb6-9801-a6e3994df3b3",
+      "name": "Telegram - Manager Topic Relay Stub"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bf98760c-d948-4f0d-a29a-7f0bf5600b8d",
+              "leftValue": "={{ $json.handoff_open }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        500,
+        180
+      ],
+      "id": "4f40c292-1dd7-4a53-afbd-8a27ac714809",
+      "name": "If - Active Human Handoff Session Is Open"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=An active handoff session is already open for this user. Replace this node with the proxy relay branch that forwards the client message into the manager topic.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        800,
+        80
+      ],
+      "id": "de808090-fb27-4a1f-b9e4-0f48e5207d25",
+      "name": "Telegram - User To Manager Proxy Relay Stub"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9e8b8e9b-9c25-4510-b482-3cfa0e659460",
+              "leftValue": "={{ $json.is_new_user || $json.intent_key === 'start' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        800,
+        280
+      ],
+      "id": "2cabce5f-82ad-4663-b77e-a7245d596938",
+      "name": "If - Start Or New User Onboarding"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Main menu skeleton (localized by user language).\n\nSuggested callbacks:\n- menu_usecases\n- menu_hot_news\n- menu_contacts\n- menu_creative\n- change_language\n\nDefault interface language for new users: RU.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1080,
+        180
+      ],
+      "id": "7b8bc0a0-ff87-4ad0-bc9b-f57fd5266f53",
+      "name": "Telegram - Send Welcome and Main Menu Skeleton"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2ab759d5-87d5-4dce-8bff-99c1ec7b5040",
+              "leftValue": "={{ $json.intent_key === 'change_language' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1080,
+        280
+      ],
+      "id": "ccfe92c6-1b8b-41ef-a041-bf6172b8726b",
+      "name": "If - Intent Is Change Language"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Language switch skeleton. Replace with localized menu labels and inline buttons.\n\nSuggested callbacks:\n- set_lang_ru\n- set_lang_en\n- set_lang_sr",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        180
+      ],
+      "id": "ea617722-e387-4de5-88d5-bf85ad10cda0",
+      "name": "Telegram - Send Language Switch Menu Skeleton"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0ccd5141-585b-4d8e-8db2-b79029eeb198",
+              "leftValue": "={{ $json.intent_key === 'set_lang_ru' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1360,
+        260
+      ],
+      "id": "a78cb658-4c7f-4f5e-bfbb-f911a6207a72",
+      "name": "If - Intent Is Set Language Russian"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bot_users\nSET language = 'ru',\n    updated_at = NOW()\nWHERE user_id = {{ $json.user_id }}::bigint\nRETURNING user_id, language;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1640,
+        180
+      ],
+      "id": "0968bf7e-88d0-4dad-a2f2-41eb0345da5d",
+      "name": "Postgres - Update User Language To Russian"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Set - Enrich Context For Routing').item.json.chat_id }}",
+        "text": "=Язык интерфейса переключен на русский. Верни пользователя в главное меню с русскими кнопками.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1920,
+        180
+      ],
+      "id": "cbf7c560-d64a-47dd-bca8-81cf4176b5f4",
+      "name": "Telegram - Confirm Language Switched To Russian"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1d7a949-02df-4467-b4a3-a4a2f36989c4",
+              "leftValue": "={{ $json.intent_key === 'set_lang_en' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1640,
+        260
+      ],
+      "id": "ef674945-d04f-439b-aaf2-0d42f2855923",
+      "name": "If - Intent Is Set Language English"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bot_users\nSET language = 'en',\n    updated_at = NOW()\nWHERE user_id = {{ $json.user_id }}::bigint\nRETURNING user_id, language;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1920,
+        260
+      ],
+      "id": "8bd6839b-6606-4424-b8ab-ac0c952ec749",
+      "name": "Postgres - Update User Language To English"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Set - Enrich Context For Routing').item.json.chat_id }}",
+        "text": "=Interface language switched to English. Return the user to the main menu with English buttons.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2200,
+        260
+      ],
+      "id": "b2c4f6af-528b-47a3-9247-9cb52a3839c3",
+      "name": "Telegram - Confirm Language Switched To English"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f76282dc-0874-4e32-918f-5c93e4adf9d9",
+              "leftValue": "={{ $json.intent_key === 'set_lang_sr' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1920,
+        340
+      ],
+      "id": "6f85842a-ef87-4691-9d53-f58fcab2e984",
+      "name": "If - Intent Is Set Language Serbian"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bot_users\nSET language = 'sr',\n    updated_at = NOW()\nWHERE user_id = {{ $json.user_id }}::bigint\nRETURNING user_id, language;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2200,
+        340
+      ],
+      "id": "416a01d1-a78b-4c97-95a7-c7f50831cc6d",
+      "name": "Postgres - Update User Language To Serbian"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Set - Enrich Context For Routing').item.json.chat_id }}",
+        "text": "=Jezik interfejsa je promenjen na srpski. Vrati korisnika u glavni meni sa srpskim dugmadima.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2480,
+        340
+      ],
+      "id": "e5265bc6-7684-4c29-b759-6e1eb9b43f32",
+      "name": "Telegram - Confirm Language Switched To Serbian"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a2ad4654-1b5f-4f06-a8bd-831d52f3b366",
+              "leftValue": "={{ $json.intent_key === 'menu_usecases' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1080,
+        400
+      ],
+      "id": "6c4e53cc-a0a8-4b54-a76e-d5a8380df18c",
+      "name": "If - Intent Is Menu Use Cases"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Use Cases submenu skeleton.\n\nSuggested callbacks:\n- case_1\n- case_2\n- case_3\n- case_4\n- back\n- main_menu",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        300
+      ],
+      "id": "522ba63d-0eb8-493d-8635-4cce2c8d62fd",
+      "name": "Telegram - Send Use Cases Menu Skeleton"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0ad9f665-f67e-4e18-9d0f-3f83992ac5f6",
+              "leftValue": "={{ $json.intent_key === 'case_1' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1220,
+        500
+      ],
+      "id": "50afbcae-48bb-4ec1-923d-c0b3c6a5b996",
+      "name": "If - Intent Is Case 1"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Case #1 placeholder. Replace with automation case details and media.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1500,
+        460
+      ],
+      "id": "0b02d2ff-3f51-4314-8ff1-faf88117ef71",
+      "name": "Telegram - Send Case 1 Skeleton"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "40d15f17-d605-4ef8-8374-74f7c7f0f573",
+              "leftValue": "={{ $json.intent_key === 'case_2' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1500,
+        560
+      ],
+      "id": "8afd45f9-b0ab-4f88-b92f-f5f0b848af7e",
+      "name": "If - Intent Is Case 2"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Case #2 placeholder. Replace with automation case details and media.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1780,
+        520
+      ],
+      "id": "e580620d-db84-4ac8-8f46-6f58c2d67ad4",
+      "name": "Telegram - Send Case 2 Skeleton"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f2f7af2a-b6c3-45f1-adfe-29ba3df7a17f",
+              "leftValue": "={{ $json.intent_key === 'case_3' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1780,
+        620
+      ],
+      "id": "f9234c73-0782-4cfd-9108-98caec9ca5b5",
+      "name": "If - Intent Is Case 3"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Case #3 placeholder. Replace with automation case details and media.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2060,
+        580
+      ],
+      "id": "95d6ecfd-d2c2-4bcc-9ef3-0e6e5f3525e8",
+      "name": "Telegram - Send Case 3 Skeleton"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "06f7228a-ddd7-4725-8bbf-9f4d3e00d9df",
+              "leftValue": "={{ $json.intent_key === 'case_4' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2060,
+        680
+      ],
+      "id": "caa3a7f2-7900-4534-8d3d-eb2aa7de39b0",
+      "name": "If - Intent Is Case 4"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Case #4 placeholder. Replace with automation case details and media.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2340,
+        640
+      ],
+      "id": "ea0c4e28-22f8-4dfa-bcbd-193bf92dca8e",
+      "name": "Telegram - Send Case 4 Skeleton"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5224c788-49c0-4833-b3b5-9488b1e4ef1c",
+              "leftValue": "={{ $json.intent_key === 'menu_hot_news' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1360,
+        500
+      ],
+      "id": "ea40d3b9-7d2d-44c6-89b0-17f618ca4b74",
+      "name": "If - Intent Is Menu Hot News"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, lang, title, digest_text, status, created_at\nFROM hot_news_digests\nWHERE status = 'published'\n  AND lang = '{{ String($json.language || \"ru\").replace(/'/g, \"''\") }}'\nORDER BY published_at DESC NULLS LAST, created_at DESC\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1640,
+        420
+      ],
+      "id": "62f61ac2-c024-496b-891e-9d9572c6d205",
+      "name": "Postgres - Fetch Latest Hot News Digest"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Set - Enrich Context For Routing').item.json.chat_id }}",
+        "text": "=Hot News digest placeholder. Replace with formatted digest output from `hot_news_digests`, including optional source links.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1920,
+        420
+      ],
+      "id": "280868c8-1d34-4ffd-839f-d258e9f09d2c",
+      "name": "Telegram - Send Hot News Digest Skeleton"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ef9e8c36-e1af-4265-97ec-7e58d93a4c27",
+              "leftValue": "={{ $json.intent_key === 'menu_contacts' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1640,
+        620
+      ],
+      "id": "87e7dbbf-fbea-4f5b-954a-cd22562d5f4d",
+      "name": "If - Intent Is Menu Contacts"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Contacts branch placeholder. Replace with your resource posts and inline buttons.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1920,
+        560
+      ],
+      "id": "d8934e00-fdb3-4b34-b9d1-e72bd04e88fe",
+      "name": "Telegram - Send Contacts Section Skeleton"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bfe21759-90e0-4d76-a115-e5af0cce8825",
+              "leftValue": "={{ $json.intent_key === 'main_menu' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1920,
+        760
+      ],
+      "id": "6c48a5d8-0531-4d75-b2d7-ae632495fbb5",
+      "name": "If - Intent Is Main Menu"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b7dddb74-a8a7-48e3-b1a5-6184bf514f02",
+              "leftValue": "={{ $json.intent_key === 'menu_creative' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2200,
+        860
+      ],
+      "id": "1ea3d77f-89ef-4fb0-a9e2-fa43429fd8b1",
+      "name": "If - Intent Is Menu Creative"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE bot_users\nSET prev_state = state,\n    state = 'creative_chat',\n    updated_at = NOW()\nWHERE user_id = {{ $json.user_id }}::bigint\nRETURNING user_id, state;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2480,
+        760
+      ],
+      "id": "55f99f23-598d-4a33-a363-bb8aecf92763",
+      "name": "Postgres - Set Creative Chat State"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Set - Enrich Context For Routing').item.json.chat_id }}",
+        "text": "=Creative mode skeleton:\n- Text and voice messages should be routed to AI dialogue with Postgres memory.\n- Add button/action for reset_memory.\n- Keep Back and Main Menu available.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2760,
+        760
+      ],
+      "id": "0657156b-9c89-4a31-b52b-a024d4f413cb",
+      "name": "Telegram - Send Creative Mode Intro Skeleton"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e2828e14-3925-4959-a0e0-f3228a194d0a",
+              "leftValue": "={{ $json.intent_key === 'reset_memory' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2480,
+        860
+      ],
+      "id": "c507b7cf-7e9a-4cf7-bec8-759ff2eea4b7",
+      "name": "If - Intent Is Reset Memory"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM n8n_chat_histories\nWHERE session_id = '{{ String($json.user_id || '').replace(/'/g, \"''\") }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2760,
+        820
+      ],
+      "id": "0a6cd0c9-2aa8-4ab8-a38f-253eeb8f2f2d",
+      "name": "Postgres - Reset Dialogue Memory"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Set - Enrich Context For Routing').item.json.chat_id }}",
+        "text": "=Memory reset done. Keep this message localized by current language in production.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3040,
+        820
+      ],
+      "id": "8db9cfcc-a036-469c-a880-f5be5588dc5c",
+      "name": "Telegram - Confirm Dialogue Memory Reset"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=Fallback branch placeholder. Replace with a short recovery message and return button to the main menu.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2480,
+        980
+      ],
+      "id": "9ca9bf65-7ee3-43ab-a883-4b8c38fe0850",
+      "name": "Telegram - Send Fallback To Main Menu"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger - Receive User Messages and Callback Queries": {
+      "main": [
+        [
+          {
+            "node": "Set - Normalize Telegram Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Normalize Telegram Update": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Load User Context and Active Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Load User Context and Active Session": {
+      "main": [
+        [
+          {
+            "node": "If - User Exists in bot_users",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - User Exists in bot_users": {
+      "main": [
+        [
+          {
+            "node": "Set - Enrich Context For Routing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Postgres - Insert New User With Default State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Insert New User With Default State": {
+      "main": [
+        [
+          {
+            "node": "Set - Enrich Context For Routing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Enrich Context For Routing": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Log Incoming Event",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If - Event Came From Manager Topic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Event Came From Manager Topic": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Manager Topic Relay Stub",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Active Human Handoff Session Is Open",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Active Human Handoff Session Is Open": {
+      "main": [
+        [
+          {
+            "node": "Telegram - User To Manager Proxy Relay Stub",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Start Or New User Onboarding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Start Or New User Onboarding": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Welcome and Main Menu Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Change Language",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Change Language": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Language Switch Menu Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Set Language Russian",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Set Language Russian": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Update User Language To Russian",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Set Language English",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Update User Language To Russian": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Confirm Language Switched To Russian",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Set Language English": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Update User Language To English",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Set Language Serbian",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Update User Language To English": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Confirm Language Switched To English",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Set Language Serbian": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Update User Language To Serbian",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Menu Use Cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Update User Language To Serbian": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Confirm Language Switched To Serbian",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Menu Use Cases": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Use Cases Menu Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Case 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Case 1": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Case 1 Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Case 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Case 2": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Case 2 Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Case 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Case 3": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Case 3 Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Case 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Case 4": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Case 4 Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Menu Hot News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Menu Hot News": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Fetch Latest Hot News Digest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Menu Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Fetch Latest Hot News Digest": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Hot News Digest Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Menu Contacts": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Contacts Section Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Main Menu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Main Menu": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Welcome and Main Menu Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Menu Creative",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Menu Creative": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Set Creative Chat State",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If - Intent Is Reset Memory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Set Creative Chat State": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Send Creative Mode Intro Skeleton",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If - Intent Is Reset Memory": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Reset Dialogue Memory",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Send Fallback To Main Menu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Reset Dialogue Memory": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Confirm Dialogue Memory Reset",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "0aee8c22-99c3-42b2-95c9-a0e636eef585",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "telegram-funnel-bot-mvp-skeleton",
+  "tags": []
+}
